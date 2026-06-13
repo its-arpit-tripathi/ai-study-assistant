@@ -3,10 +3,10 @@ import { createContext, useContext, useState, useEffect } from 'react';
 const AppContext = createContext();
 
 export function AppProvider({ children }) {
-  // Dark mode
+  // Theme state
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('darkMode');
-    return saved ? JSON.parse(saved) : false;
+    return saved !== null ? saved === 'true' : window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
 
   // Subjects
@@ -25,11 +25,11 @@ export function AppProvider({ children }) {
   });
 
   // Active tab
-  const [activeTab, setActiveTab] = useState('upload');
+  const [activeTab, setActiveTab] = useState('library');
 
-  // Persist dark mode
+  // Handle theme changes
   useEffect(() => {
-    localStorage.setItem('darkMode', JSON.stringify(darkMode));
+    localStorage.setItem('darkMode', darkMode);
     if (darkMode) {
       document.body.classList.add('dark');
     } else {
