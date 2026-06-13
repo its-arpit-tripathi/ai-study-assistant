@@ -33,8 +33,8 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 
 // Routes
-app.use('/api/auth', authRoutes);
-app.use('/api', aiRoutes);
+app.use('/auth', authRoutes);
+app.use('/', aiRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
