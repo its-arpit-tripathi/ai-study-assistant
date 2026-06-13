@@ -51,3 +51,14 @@ I have successfully built the **AI Study Assistant** using React, Tailwind CSS, 
    - Navigate to `http://localhost:5173` to use the application.
 
 > **Note:** The Voice Q&A feature uses the Web Speech API (`SpeechRecognition`), which is best supported on **Google Chrome**. If you are using another browser, the microphone button will gracefully fallback to typing only.
+
+## Deployment (Vercel & Render)
+
+If you are deploying the application to production, make sure to set the correct environment variables:
+
+1. **Render (Backend)**
+   - Add `GEMINI_API_KEY` (Your Google Gemini API Key).
+   - Add `FRONTEND_URL` (The URL of your deployed Vercel application, e.g., `https://my-ai-study-app.vercel.app`). This is required for CORS configuration.
+
+2. **Vercel (Frontend)**
+   - Add `VITE_API_URL` to point to your deployed Render backend (e.g., `https://my-render-app.onrender.com/api`). Without this, the frontend will fail to reach the remote API.
