@@ -83,6 +83,13 @@ export const api = {
     return handleResponse(res);
   },
 
+  async getDocumentStatus(id) {
+    const res = await fetch(`/api/documents/${encodeURIComponent(id)}/status`, {
+      headers: authHeaders(),
+    });
+    return handleResponse(res);
+  },
+
   async warmDocument(id) {
     if (!id) return;
     try {

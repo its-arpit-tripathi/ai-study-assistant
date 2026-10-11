@@ -55,7 +55,13 @@ export function ChatHeader({
                 {activeDocument.name}
               </span>
               <span className="text-[11px] bg-slate-200 dark:bg-[#262934] text-slate-600 dark:text-slate-400 px-1.5 py-0.5 rounded font-medium">
-                {activeDocument.chunkCount} chunks
+                {activeDocument.status === 'processing'
+                  ? 'Processing...'
+                  : activeDocument.status === 'queued'
+                  ? 'Queued...'
+                  : activeDocument.status === 'failed'
+                  ? 'Failed'
+                  : `${activeDocument.chunkCount ?? activeDocument.chunk_count ?? activeDocument.chunks ?? 0} chunks`}
               </span>
               <button
                 type="button"

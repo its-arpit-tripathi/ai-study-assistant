@@ -75,12 +75,22 @@ export function Sidebar({
       clearTimeout(p1);
       clearTimeout(p2);
 
-      setUploadProgress({ percent: 100, text: 'Indexing complete!' });
+      const chunkCount = Number(res.document?.chunkCount ?? res.document?.chunks ?? 0);
+      const isCompleted = res.document?.status === 'indexed' && chunkCount > 0;
+
+      setUploadProgress({
+        percent: 100,
+        text: isCompleted ? 'Indexing complete!' : 'Processing embeddings in background...',
+      });
 
       setTimeout(() => {
         setIsUploading(false);
         setUploadProgress({ percent: 0, text: '' });
-        showToast(`"${res.document.name}" processed (${res.document.chunkCount} chunks)!`, 'success');
+        if (isCompleted) {
+          showToast(`"${res.document.name}" processed (${chunkCount} chunks)!`, 'success');
+        } else {
+          showToast(`"${res.document.name}" uploaded. Processing chunks in background...`, 'info');
+        }
         onUploadSuccess(res.document);
       }, 600);
     } catch (err) {
@@ -94,7 +104,10 @@ export function Sidebar({
     doc.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const totalChunks = documents.reduce((acc, doc) => acc + (Number(doc.chunkCount) || 0), 0);
+  const totalChunks = documents.reduce(
+    (acc, doc) => acc + (Number(doc.chunkCount ?? doc.chunk_count ?? doc.chunks) || 0),
+    0
+  );
   const progressPercent = Math.min(Math.round((totalChunks / 50000) * 100), 100);
 
   return (
@@ -245,11 +258,30 @@ export function Sidebar({
                             {doc.name}
                           </h4>
                           <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 dark:text-slate-400">
-                            <span>{doc.chunkCount} chunks</span>
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                              {isActive ? 'Ready' : 'Indexed'}
-                            </span>
+                            {doc.status === 'processing' ? (
+                              <>
+                                <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                                <span className="text-amber-500 dark:text-amber-400 font-medium">Processing chunks...</span>
+                              </>
+                            ) : doc.status === 'queued' ? (
+                              <>
+                                <span className="inline-block w-2 h-2 rounded-full bg-sky-400 animate-pulse shrink-0" />
+                                <span className="text-sky-500 dark:text-sky-400 font-medium">Queued in background...</span>
+                              </>
+                            ) : doc.status === 'failed' ? (
+                              <>
+                                <span className="inline-block w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+                                <span className="text-rose-500 dark:text-rose-400 font-medium">Processing failed</span>
+                              </>
+                            ) : (
+                              <>
+                                <span>{(doc.chunkCount ?? doc.chunk_count ?? doc.chunks ?? 0)} chunks</span>
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                                  {isActive ? 'Ready' : 'Indexed'}
+                                </span>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>

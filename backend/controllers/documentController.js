@@ -123,8 +123,9 @@ export const documentController = {
         });
       }
 
-      // Default: wait up to 15 seconds for job completion so existing UI gets instant indexing confirmation
-      const jobResult = await ingestionQueue.waitForJob(job.id, { timeoutMs: 15000 });
+      // Wait up to 45 seconds for job completion so most docs complete synchronously and return actual chunkCount
+      const timeoutMs = Math.max(15000, Number(process.env.INGESTION_SYNC_TIMEOUT_MS || 45000));
+      const jobResult = await ingestionQueue.waitForJob(job.id, { timeoutMs });
       if (jobResult && jobResult.status === 'completed') {
         const updatedDoc = await DocumentModel.findById(req.user.id, id);
         return res.json({
@@ -141,10 +142,23 @@ export const documentController = {
         });
       }
 
-      // Ingestion taking longer than timeout -> return queued status
+      // Check one more time in case worker completed right at timeout
+      const latestDoc = await DocumentModel.findById(req.user.id, id);
+      if (latestDoc && latestDoc.status === 'indexed' && (latestDoc.chunkCount > 0)) {
+        return res.json({
+          success: true,
+          document: latestDoc,
+          message: `"${originalname}" processed successfully: ${latestDoc.chunkCount} chunks indexed.`,
+        });
+      }
+
+      // Ingestion taking longer than timeout -> return processing status for frontend polling
       return res.json({
         success: true,
-        document: docEntry,
+        document: {
+          ...(latestDoc || docEntry),
+          status: latestDoc?.status || 'processing',
+        },
         jobId: job.id,
         message: `"${originalname}" uploaded and currently processing in background.`,
         status: 'processing',
@@ -180,6 +194,8 @@ export const documentController = {
         name: doc.name,
         status: doc.status,
         chunkCount: doc.chunkCount,
+        chunks: doc.chunkCount,
+        chunk_count: doc.chunkCount,
         errorMessage: doc.errorMessage,
         retryCount: doc.retryCount,
         storageKey: doc.storageKey,

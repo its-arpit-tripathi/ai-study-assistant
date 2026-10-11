@@ -87,6 +87,16 @@ export default function App() {
 
       if (docs.status === 'fulfilled' && Array.isArray(docs.value)) {
         setDocuments(docs.value);
+        setActiveDocument((currentActive) => {
+          if (!currentActive) {
+            const savedId = localStorage.getItem('activeDocId');
+            const found = docs.value.find((d) => d.id === savedId);
+            return found || docs.value[0] || null;
+          }
+          const updated = docs.value.find((d) => d.id === currentActive.id);
+          return updated || currentActive;
+        });
+
         if (docs.value.length > 0) {
           api.warmDocument(docs.value[0].id);
         }
@@ -124,6 +134,51 @@ export default function App() {
     initAuth();
   }, []);
 
+  // Automatically poll status for any documents that are still queued, processing, or have 0 chunks
+  useEffect(() => {
+    const hasPendingDocs = documents.some(
+      (d) =>
+        d.status === 'queued' ||
+        d.status === 'processing' ||
+        ((Number(d.chunkCount ?? d.chunks ?? 0) === 0) && d.status !== 'failed')
+    );
+
+    if (!hasPendingDocs) return;
+
+    const intervalId = setInterval(async () => {
+      try {
+        const updatedDocs = await api.getDocuments();
+        if (Array.isArray(updatedDocs)) {
+          // Detect documents that transitioned to indexed with chunks > 0
+          for (const updated of updatedDocs) {
+            const previous = documents.find((d) => d.id === updated.id);
+            const prevCount = Number(previous?.chunkCount ?? previous?.chunks ?? 0);
+            const newCount = Number(updated?.chunkCount ?? updated?.chunks ?? 0);
+            if (
+              previous &&
+              (previous.status !== 'indexed' || prevCount === 0) &&
+              updated.status === 'indexed' &&
+              newCount > 0
+            ) {
+              showToast(`"${updated.name}" indexed successfully (${newCount} chunks ready)!`, 'success');
+            }
+          }
+
+          setDocuments(updatedDocs);
+          setActiveDocument((currentActive) => {
+            if (!currentActive) return currentActive;
+            const updated = updatedDocs.find((d) => d.id === currentActive.id);
+            return updated || currentActive;
+          });
+        }
+      } catch (err) {
+        console.warn('Polling document status error:', err);
+      }
+    }, 2500);
+
+    return () => clearInterval(intervalId);
+  }, [documents]);
+
   // Handle successful login or registration
   const handleAuthenticated = async (authenticatedUser) => {
     setUser(authenticatedUser);
@@ -132,6 +187,7 @@ export default function App() {
 
   const handleSignOut = () => {
     clearToken();
+    localStorage.removeItem('activeDocId');
     setUser(null);
     setDocuments([]);
     setActiveDocument(null);
@@ -142,6 +198,9 @@ export default function App() {
   // Select document
   const handleSelectDocument = (doc) => {
     setActiveDocument(doc);
+    if (doc?.id) {
+      localStorage.setItem('activeDocId', doc.id);
+    }
     setMessages([]);
     setSidebarOpen(false);
     api.warmDocument(doc.id);
@@ -158,6 +217,7 @@ export default function App() {
       setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
       if (activeDocument?.id === doc.id) {
         setActiveDocument(null);
+        localStorage.removeItem('activeDocId');
         setMessages([]);
       }
       showToast(`"${doc.name}" deleted.`, 'success');
@@ -168,8 +228,17 @@ export default function App() {
 
   // Document uploaded successfully
   const handleUploadSuccess = (newDoc) => {
-    setDocuments((prev) => [newDoc, ...prev]);
+    setDocuments((prev) => {
+      const exists = prev.some((d) => d.id === newDoc.id);
+      if (exists) {
+        return prev.map((d) => (d.id === newDoc.id ? newDoc : d));
+      }
+      return [newDoc, ...prev];
+    });
     setActiveDocument(newDoc);
+    if (newDoc?.id) {
+      localStorage.setItem('activeDocId', newDoc.id);
+    }
     setMessages([]);
     setSidebarOpen(false);
     api.warmDocument(newDoc.id);
@@ -401,7 +470,10 @@ export default function App() {
           user={user}
           onSignOut={handleSignOut}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          onResetActiveDocument={() => setActiveDocument(null)}
+          onResetActiveDocument={() => {
+            setActiveDocument(null);
+            localStorage.removeItem('activeDocId');
+          }}
           theme={theme}
           onToggleTheme={toggleTheme}
         />

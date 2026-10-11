@@ -12,6 +12,17 @@ export class DocumentModel {
     return rows[0].id;
   }
 
+  static _mapRow(row) {
+    if (!row) return null;
+    const count = Number(row.chunkCount ?? row.chunk_count ?? row.chunks ?? 0);
+    return {
+      ...row,
+      chunkCount: count,
+      chunks: count,
+      chunk_count: count,
+    };
+  }
+
   static async findAllByUser(userId) {
     const db = getPool();
     const { rows } = await db.query(
@@ -26,7 +37,7 @@ export class DocumentModel {
        ORDER BY uploaded_at DESC`,
       [userId]
     );
-    return rows;
+    return rows.map((r) => this._mapRow(r));
   }
 
   static async findById(userId, documentId) {
@@ -43,7 +54,7 @@ export class DocumentModel {
        WHERE user_id = $1 AND id = $2`,
       [userId, documentId]
     );
-    return rows[0] || null;
+    return this._mapRow(rows[0]);
   }
 
   static async findByCollection(userId, collectionName) {
@@ -60,7 +71,7 @@ export class DocumentModel {
        WHERE user_id = $1 AND collection_name = $2`,
       [userId, collectionName]
     );
-    return rows[0] || null;
+    return this._mapRow(rows[0]);
   }
 
   static async findByHash(userId, contentHash) {
@@ -79,7 +90,7 @@ export class DocumentModel {
        LIMIT 1`,
       [userId, contentHash]
     );
-    return rows[0] || null;
+    return this._mapRow(rows[0]);
   }
 
   static async create(userId, doc) {
@@ -128,7 +139,7 @@ export class DocumentModel {
         ]
       );
       await client.query('COMMIT');
-      return rows[0];
+      return this._mapRow(rows[0]);
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
@@ -149,7 +160,7 @@ export class DocumentModel {
        RETURNING id, status, chunk_count as "chunkCount", error_message as "errorMessage"`,
       [status, chunkCount ?? null, errorMessage, retryCount, id]
     );
-    return rows[0] || null;
+    return this._mapRow(rows[0]);
   }
 
   static async delete(userId, documentId) {
