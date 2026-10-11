@@ -209,7 +209,10 @@ The repository includes a ready-to-use [`render.yaml`](file:///d:/NotebookLM_RAG
    ```
 2. **Open Render**: Go to [dashboard.render.com](https://dashboard.render.com/) and click **New +** → **Blueprint**.
 3. **Connect Repository**: Select `its-arpit-tripathi/ai-study-assistant`.
-4. **Environment Variables**: Fill in the required environment variables in the Render dashboard:
+4. **Configure Web Service**:
+   - **Build Command**: `npm install --legacy-peer-deps && npm run build`
+   - **Start Command**: `node backend/server.js`
+5. **Environment Variables**: Fill in the required environment variables in the Render dashboard:
    - `GROQ_API_KEY`
    - `QDRANT_URL`
    - `QDRANT_API_KEY`
@@ -218,7 +221,7 @@ The repository includes a ready-to-use [`render.yaml`](file:///d:/NotebookLM_RAG
    - `AWS_SECRET_ACCESS_KEY`
    - `AWS_S3_BUCKET`
    - `AWS_ENDPOINT_URL_S3`
-5. **Deploy**: Render will build the Vite frontend (`dist/`), start the unified Express server, and serve your app with automated HTTPS!
+6. **Deploy**: Render will build the Vite frontend (`dist/`), start the unified Express server, and serve your app with automated HTTPS!
 
 ---
 

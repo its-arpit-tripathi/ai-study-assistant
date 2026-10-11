@@ -3,7 +3,7 @@ services:
     name: notebooklm-rag
     region: oregon
     runtime: node
-    buildCommand: npm install && npm run build
+    buildCommand: npm install --legacy-peer-deps && npm run build
     startCommand: node backend/server.js
     envVars:
       - key: GROQ_API_KEY
