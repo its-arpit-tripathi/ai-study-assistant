@@ -26,6 +26,9 @@ import { ingestionWorker } from './lib/ingestionWorker.js';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust reverse proxy hops (Render, Cloudflare, AWS, etc.)
+app.set('trust proxy', 1);
+
 // Security & Body parsing
 app.disable('x-powered-by');
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
