@@ -1,231 +1,315 @@
-# 📓 NotebookLM RAG — Chat with Your Documents
+# 📓 NotebookLM RAG — Grounded AI Document Intelligence
 
-A full-stack **RAG (Retrieval-Augmented Generation)** application inspired by Google NotebookLM. Upload any document and have an AI-powered conversation grounded entirely in its content.
+A production-grade **Retrieval-Augmented Generation (RAG)** platform inspired by Google NotebookLM. Upload documents (PDFs, research papers, reports) and query them through real-time streaming conversations strictly grounded in document excerpts, backed by **claim-level citation verification**, **hybrid search**, **durable object storage**, and an **in-browser PDF page viewer**.
 
-![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat&logo=node.js&logoColor=white)
-![Express](https://img.shields.io/badge/Express-000000?style=flat&logo=express&logoColor=white)
-![Groq](https://img.shields.io/badge/Groq-FF6B35?style=flat&logo=data:image/svg+xml;base64,&logoColor=white)
-![Hugging Face](https://img.shields.io/badge/Transformers.js-FFD21E?style=flat&logo=huggingface&logoColor=black)
-![Qdrant](https://img.shields.io/badge/Qdrant-FF4F64?style=flat&logo=data:image/svg+xml;base64,&logoColor=white)
+[![Node.js](https://img.shields.io/badge/Node.js-v18%2B-339933?style=flat&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Express](https://img.shields.io/badge/Express-4.21-000000?style=flat&logo=express&logoColor=white)](https://expressjs.com/)
+[![React](https://img.shields.io/badge/React-18.3-61DAFB?style=flat&logo=react&logoColor=black)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-5.4-646CFF?style=flat&logo=vite&logoColor=white)](https://vitejs.dev/)
+[![Groq](https://img.shields.io/badge/Groq-Cloud%20LLM-F55036?style=flat&logoColor=white)](https://groq.com/)
+[![Qdrant](https://img.shields.io/badge/Qdrant-Vector%20DB-DC2626?style=flat&logoColor=white)](https://qdrant.tech/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon%20DB-4169E1?style=flat&logo=postgresql&logoColor=white)](https://neon.tech/)
 
-## ✨ Features
+---
 
-- **Document Upload** — Upload PDF or plain text files via drag-and-drop or file picker
-- **Intelligent Chunking** — Documents are split using Recursive Character Text Splitting for optimal retrieval
-- **Semantic Search** — Chunks are embedded and stored in Qdrant vector database for similarity search
-- **Grounded Answers** — AI answers come exclusively from your document — no hallucination
-- **Source References** — Every answer shows which pages/sections the information came from
-- **One API key** — Groq is the only AI service you need; embeddings run locally on the server
-- **Status badge** — The header badge turns red and explains why when the vector DB is unreachable
-- **Premium UI** — Clean design with smooth animations, responsive on desktop and mobile
+## ✨ Features & Capabilities
+
+- **Strict Evidence Grounding** — Responses cite direct page numbers and chunk IDs; zero hallucination from outside training data.
+- **Automated Claim Verification** — An asynchronous verification engine audits every generated claim against retrieved source excerpts, categorizing claims as `Supported`, `Partially Verified`, or `Issues Found`.
+- **In-App PDF Evidence Viewer** — Click any citation badge (`📌 file.pdf · p. 2`) to instantly open the embedded PDF viewer jumped directly to that page.
+- **Server-Sent Events (SSE) Streaming** — Real-time token streaming with live preliminary sources, draft answer updates, and completion telemetry.
+- **Hybrid Search & Fusion** — Combines dense semantic vector retrieval (Qdrant) with sparse keyword retrieval (PostgreSQL BM25) using Reciprocal Rank Fusion (RRF) and Cross-Encoder reranking.
+- **Durable Ingestion & Queue Worker** — S3-compatible document storage, SHA-256 idempotency deduplication, and a PostgreSQL background job queue with stalled lock reclamation.
+- **Multi-Replica Production Controls** — Distributed rate-limiting, shared query caching, and semaphore concurrency limits.
+- **High-Performance Presentation** — Rich Markdown rendering for tables, callout banners, cited excerpts, code blocks with copy buttons, and frame-throttled streaming.
+
+---
 
 ## 🏗️ Architecture
 
 ```
-User Browser ──► Express.js Server
-                    │
-                    ├── Document Processor (PDFLoader + RecursiveCharacterTextSplitter)
-                    │
-                    ├── Local embeddings (Transformers.js · Xenova/all-MiniLM-L6-v2) ──► Qdrant Cloud (Vector DB)
-                    │
-                    └── Groq LLM (openai/gpt-oss-120b) ──► Grounded Answer
+                                  ┌──────────────────────────────┐
+                                  │      React + Vite Client     │
+                                  │   (Dual Theme · PDF Modal)   │
+                                  └──────────────┬───────────────┘
+                                                 │ HTTP / SSE Stream
+                                                 ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                               Express.js Web Server                                    │
+│                                                                                        │
+│  ┌────────────────────────┐  ┌────────────────────────┐  ┌──────────────────────────┐  │
+│  │ JWT Authentication     │  │ Distributed Rate Limit │  │ Shared Answer Cache      │  │
+│  │ (bcrypt + PostgreSQL)  │  │ (PostgreSQL Coordinator)│  │ (Multi-Replica Sync)     │  │
+│  └────────────────────────┘  └────────────────────────┘  └──────────────────────────┘  │
+│                                                                                        │
+│  ┌──────────────────────────────────────────────────────────────────────────────────┐  │
+│  │ Hybrid Retrieval Pipeline                                                        │  │
+│  │  1. In-process Embedding (Transformers.js all-MiniLM-L6-v2, 384-dim)             │  │
+│  │  2. Qdrant Vector Retrieval (Top-30 dense candidates)                             │  │
+│  │  3. PostgreSQL BM25 Search (Exact lexical term matching)                         │  │
+│  │  4. Reciprocal Rank Fusion (RRF) + Cross-Encoder Reranker (Top-5 Context Chunks) │  │
+│  └──────────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                        │
+│  ┌────────────────────────────────────────┐  ┌──────────────────────────────────────┐  │
+│  │ Groq Streaming LLM (qwen3.8-27b)       │  │ Claim Citation Verifier              │  │
+│  │ (Token SSE stream + model fallbacks)   │  │ (JSON Mode assertion audit)          │  │
+│  └────────────────────────────────────────┘  └──────────────────────────────────────┘  │
+└──────────────────────┬──────────────────────────────────────────┬──────────────────────┘
+                       │                                          │
+                       ▼                                          ▼
+     ┌──────────────────────────────────┐       ┌──────────────────────────────────┐
+     │          Qdrant Cloud            │       │      PostgreSQL (Neon DB)        │
+     │      (Vector Search Index)       │       │  - User Accounts & Workspaces    │
+     │                                  │       │  - Document & Chunk Metadata     │
+     └──────────────────────────────────┘       │  - S3 File Keys & Hash Tracking  │
+                       ▲                        │  - Ingestion Job Queue           │
+                       │                        │  - Shared Cache & Rate Limits    │
+     ┌─────────────────┴────────────────┐       └──────────────────────────────────┘
+     │   Asynchronous Ingestion Worker  │                         ▲
+     │    (S3 File Retrieval + Worker)  ├─────────────────────────┘
+     └──────────────────────────────────┘
 ```
 
-### RAG Pipeline
-
-1. **Ingestion** — Upload a PDF or TXT file
-2. **Chunking** — `RecursiveCharacterTextSplitter` splits the document (1000 chars, 200 overlap)
-3. **Embedding** — `Xenova/all-MiniLM-L6-v2` runs on the server via ONNX Runtime and produces 384-dim vectors (no API call)
-4. **Storage** — Vectors are stored in Qdrant Cloud (free tier)
-5. **Retrieval** — User question is embedded and top-4 similar chunks are retrieved
-6. **Generation** — Groq `openai/gpt-oss-120b` generates an answer grounded in the retrieved context
-
-### Why local embeddings?
-
-Groq's free tier is generous, but Groq serves **no embedding models** (its `/models` endpoint lists chat, audio and guard models only). Rather than depend on a second paid/quota-limited API just for embeddings, the app runs a small open sentence-transformer in-process:
-
-| | Local (`Xenova/all-MiniLM-L6-v2`) | Gemini (`gemini-embedding-001`) |
-|---|---|---|
-| API key | none | `GOOGLE_API_KEY` |
-| Dimensions | 384 | 3072 |
-| Cost / quota | none | free tier, rate limited |
-| Cold start | ~23 MB download on first run, then cached | none |
-| Speed | ~100 chunks/sec on a laptop | network bound |
-
-Gemini is still available as an opt-in provider (`EMBEDDING_PROVIDER=gemini`). Note that the two produce differently-sized vectors, so a document indexed with one cannot be searched with the other — delete and re-upload after switching.
-
-## 📐 Chunking Strategy
-
-**Recursive Character Text Splitting** was chosen for its balance of simplicity and effectiveness:
-
-| Parameter | Value | Rationale |
-|-----------|-------|-----------|
-| `chunkSize` | 1000 | Large enough for meaningful context, small enough for precise retrieval |
-| `chunkOverlap` | 200 | 20% overlap prevents information loss at chunk boundaries |
-| Separators | `["\n\n", "\n", " ", ""]` | Hierarchical — tries paragraph breaks first, then lines, then words |
-
-This strategy preserves natural text structure (paragraphs, sentences) while ensuring consistent chunk sizes for embedding quality.
+---
 
 ## 🛠️ Tech Stack
 
-| Component | Technology | Cost |
-|-----------|-----------|------|
-| Backend | Node.js + Express.js | Free |
-| LLM | Groq (`openai/gpt-oss-120b`, automatic fallback to `openai/gpt-oss-20b`, `qwen/qwen3.8-27b`) | Free |
-| Embeddings | Transformers.js + ONNX Runtime, `Xenova/all-MiniLM-L6-v2` (runs on the server) | Free, no key |
-| Vector DB | Qdrant Cloud | Free |
-| Frontend | Vanilla HTML/CSS/JS | Free |
-| Deployment | Render | Free |
+| Layer | Technology | Purpose |
+|---|---|---|
+| **Frontend** | React 18, Vite, TailwindCSS | Fast single-page application with responsive dark/light mode |
+| **Backend API** | Node.js (v18+), Express | REST and SSE endpoints with Helmet security and rate limiters |
+| **LLM Provider** | Groq (`qwen/qwen3.8-27b`, fallbacks) | Ultra-fast inference for streaming answers and verification |
+| **Vector DB** | Qdrant Cloud | Dense vector indexing and similarity search |
+| **Database** | PostgreSQL (Neon serverless) | Users, metadata, BM25 keyword store, queues, shared caches |
+| **Object Storage** | S3-Compatible Storage (AWS / Neon) | Durable, persistent storage for uploaded PDFs and files |
+| **Embeddings** | `@xenova/transformers` (local in-process) | 384-dimensional ONNX embeddings without external API costs |
 
-## 🚀 Setup
+---
 
-### Prerequisites
+## 📋 Prerequisites & Accounts
 
-- Node.js 18+
-- Free accounts (no credit card needed):
-  - [Groq Console](https://console.groq.com) — LLM API key
-  - [Qdrant Cloud](https://cloud.qdrant.io) — Vector Database cluster URL + API key
+Before running or deploying the application, acquire keys for the following free tiers (no credit card required):
 
-### Local Development
+1. **Groq API Key**: Sign up at [console.groq.com](https://console.groq.com/) and create an API key.
+2. **Qdrant Cloud**: Create a free cluster at [cloud.qdrant.io](https://cloud.qdrant.io/) and copy your **Cluster URL** and **API Key**.
+3. **PostgreSQL Database**: Create a free serverless PostgreSQL database at [neon.tech](https://neon.tech/) and copy your connection string (`DATABASE_URL`).
+4. **S3-Compatible Object Storage**: Neon Object Storage or AWS S3 credentials (Bucket name, Region, Access Key, Secret Key).
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/notebooklm-rag.git
-   cd notebooklm-rag
-   ```
+---
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-   > The repo ships an `.npmrc` with `legacy-peer-deps=true`. Without it a fresh install fails with `ERESOLVE` because `@langchain/community` declares optional peers whose ranges conflict with `dotenv` 17.
+## 💻 Step-by-Step Local Setup
 
-3. **Configure environment variables**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your Groq and Qdrant keys
-   ```
-
-4. **Start the server**
-   ```bash
-   npm run dev
-   ```
-   On first start the embedding model (~23 MB) is downloaded and cached under `node_modules/@huggingface/transformers/.cache`. The console prints the LLM / embedding / Qdrant configuration and warns immediately if Qdrant is unreachable.
-
-5. **Open** `http://localhost:3000` in your browser
-
-### Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GROQ_API_KEY` | ✅ | Groq API key — [console.groq.com](https://console.groq.com) |
-| `QDRANT_URL` | ✅ | Qdrant Cloud cluster URL — [cloud.qdrant.io](https://cloud.qdrant.io) |
-| `QDRANT_API_KEY` | ✅ | Qdrant Cloud API key |
-| `GROQ_MODEL` | | Chat model (default `openai/gpt-oss-120b`). If it is retired the app falls back automatically and logs a warning. |
-| `EMBEDDING_PROVIDER` | | `local` (default) or `gemini` |
-| `EMBEDDING_MODEL` | | Local: any HF Hub feature-extraction model with ONNX weights, e.g. `Xenova/bge-small-en-v1.5`. Gemini: defaults to `gemini-embedding-001`. |
-| `EMBEDDING_BATCH_SIZE` | | Chunks per forward pass for local embeddings (default `8`). Peak RAM scales with this: 8 ≈ 300 MB, 32 ≈ 560 MB. |
-| `EMBEDDING_DTYPE` | | `q8` (default) · `fp32` · `fp16` |
-| `GOOGLE_API_KEY` | only with `gemini` | Google AI Studio key — [aistudio.google.com](https://aistudio.google.com) |
-
-## 📁 Project Structure
-
-```
-notebooklm-rag/
-├── server.js              # Express server + API routes
-├── lib/
-│   ├── documentProcessor.js   # PDF/TXT loading + chunking
-│   ├── embeddings.js          # Embedding provider (local Transformers.js by default, Gemini opt-in)
-│   ├── vectorStore.js         # Qdrant indexing + retrieval
-│   ├── registry.js            # Persistent document registry (stored in Qdrant)
-│   ├── qdrant.js              # Qdrant error translation (suspended cluster, bad key, ...)
-│   └── llm.js                 # Groq LLM with automatic model fallback
-├── public/
-│   ├── index.html             # Frontend UI
-│   ├── styles.css             # Theme
-│   └── app.js                 # Client-side logic (incl. backend health badge)
-├── .env.example               # Environment variable template
-├── .npmrc                     # legacy-peer-deps (needed for a clean npm install)
-├── render.yaml                # Render deployment config
-└── README.md
+### Step 1: Clone the Repository
+```bash
+git clone https://github.com/its-arpit-tripathi/ai-study-assistant.git
+cd ai-study-assistant
 ```
 
-## 🌐 Deployment (Render)
-
-1. Push code to GitHub
-2. Go to [Render.com](https://render.com) → New Web Service
-3. Connect your GitHub repo
-4. Configure:
-   - **Build Command**: `npm install`
-   - **Start Command**: `node server.js`
-5. Add `GROQ_API_KEY`, `QDRANT_URL`, `QDRANT_API_KEY` in the Render dashboard (`render.yaml` already sets `EMBEDDING_PROVIDER=local` and `EMBEDDING_BATCH_SIZE=8`)
-6. Deploy!
-
-Notes for the free instance (512 MB RAM):
-
-- Keep `EMBEDDING_BATCH_SIZE` at 8 or lower.
-- The filesystem is ephemeral, so the embedding model is re-downloaded (~23 MB, a few seconds) after each cold start. The server warms it up at boot so the first upload isn't slow.
-
-## 🩺 Troubleshooting
-
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| Header badge says **Vector DB offline**; uploads/chat return HTTP 503 `Cannot reach the Qdrant cluster ... (ECONNRESET)` | Qdrant Cloud suspended (1 week idle) or deleted (4 weeks idle) the free cluster | Log in to [cloud.qdrant.io](https://cloud.qdrant.io) and resume it, or create a new cluster and update `QDRANT_URL` / `QDRANT_API_KEY`. See the keep-alive section below. |
-| Console warns `Groq model "..." is unavailable; using "..." instead` | Groq retired the configured model | Nothing breaks — the fallback is used. Set `GROQ_MODEL` to a model from [console.groq.com/docs/models](https://console.groq.com/docs/models) to silence the warning. |
-| `npm install` fails with `ERESOLVE ... Conflicting peer dependency: dotenv` | Missing `.npmrc` | Make sure `.npmrc` (`legacy-peer-deps=true`) is present, or run `npm install --legacy-peer-deps`. |
-| Chat returns *"indexed with a different embedding model"* | Document was embedded with another provider/model (different vector size) | Delete the document and upload it again. |
-| Slow first upload | Embedding model downloading on first run | Wait for `🧠 Local embeddings ready` in the server log. |
-
-## ⚠️ Keeping the Qdrant Free Cluster Alive
-
-Qdrant Cloud **free-tier** clusters are reclaimed when left idle:
-
-| Idle time | State | Recoverable? |
-|-----------|-------|--------------|
-| 1 week | Suspended | ✅ Reactivate from dashboard — data preserved |
-| 4 weeks | Permanently deleted | ❌ Must re-create cluster + re-upload documents |
-
-The timer is based on **inactivity**, not age — any request resets it. To prevent
-the cluster from ever being suspended, this app exposes a keep-alive endpoint:
-
-```
-GET /api/health   →   { "status": "ok", "qdrant": { "ok": true, "collections": N }, "llm": {...}, "embeddings": {...} }
+### Step 2: Install Dependencies
+This project uses npm workspaces. Install all root, backend, and frontend packages with:
+```bash
+npm install
 ```
 
-Point a free uptime monitor (e.g. [cron-job.org](https://cron-job.org),
-UptimeRobot) at `https://<your-app>/api/health` every few days. Each hit pings
-Qdrant and resets the inactivity clock. The endpoint returns HTTP `200` when
-Qdrant is reachable and `503` when it isn't — useful for monitoring too.
+### Step 3: Configure Environment Variables
+Copy the example environment configuration into `backend/.env`:
+```bash
+cp backend/.env.example backend/.env
+```
 
-> If the cluster ever does get deleted, just create a new one, update
-> `QDRANT_URL` + `QDRANT_API_KEY`, and re-upload your documents.
+Open `backend/.env` and supply your credentials:
+```env
+# Port & Environment
+PORT=3000
+NODE_ENV=development
+
+# Groq LLM API
+GROQ_API_KEY=gsk_your_groq_api_key
+GROQ_MODEL=qwen/qwen3.8-27b
+
+# Qdrant Vector Database
+QDRANT_URL=https://your-cluster-id.qdrant.tech
+QDRANT_API_KEY=your_qdrant_api_key
+
+# PostgreSQL Connection String
+DATABASE_URL=postgresql://user:password@ep-xyz.aws.neon.tech/neondb?sslmode=require
+
+# Authentication Secret (Minimum 32 random characters)
+JWT_SECRET=your_super_secret_jwt_key_minimum_32_characters_long
+
+# In-Process Embeddings & Search Controls
+EMBEDDING_PROVIDER=local
+EMBEDDING_BATCH_SIZE=8
+RERANKER_ENABLED=true
+CITATION_VERIFIER_ENABLED=true
+CITATION_VERIFIER_TIMEOUT_MS=8000
+
+# S3-Compatible Object Storage
+AWS_ENDPOINT_URL_S3=https://your-s3-endpoint.amazonaws.com
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_REGION=ap-southeast-1
+AWS_S3_BUCKET=notebooklm-docs
+```
+
+### Step 4: Run Database Migrations
+Execute all database schemas (indexes, workspace models, durable job queues, and shared caches):
+```bash
+node backend/scripts/run-migration.mjs
+```
+
+### Step 5: Start Development Servers
+Run the backend and frontend development servers concurrently:
+
+**Terminal 1 (Backend API & Ingestion):**
+```bash
+npm run dev:backend
+```
+*(Runs on `http://localhost:3000`)*
+
+**Terminal 2 (Frontend Client):**
+```bash
+npm run dev:frontend
+```
+*(Runs on `http://localhost:5173` with automated API proxying to port 3000)*
+
+Open `http://localhost:5173` in your browser, create an account, upload a PDF, and start exploring!
+
+---
+
+## 🧪 Testing & Validation
+
+The project includes an end-to-end automated testing suite:
+
+```bash
+# 1. Run unit and integration tests
+npm test
+
+# 2. Run End-to-End SSE Streaming Lifecycle Test
+node backend/scripts/test-sse-streaming-e2e.mjs
+
+# 3. Run Durable S3 Storage & Replica Concurrency Test
+node backend/scripts/test-storage-and-replicas-e2e.mjs
+
+# 4. Run Multi-User Tenant Isolation Security Test
+node backend/scripts/test-multi-user-isolation.mjs
+```
+
+---
+
+## 🌐 Step-by-Step Production Deployment
+
+### Option A: Deploy to Render (Recommended / 1-Click Blueprints)
+
+The repository includes a ready-to-use [`render.yaml`](file:///d:/NotebookLM_RAG-work/render.yaml) configuration:
+
+1. **Push your code to GitHub**:
+   ```bash
+   git push origin main
+   ```
+2. **Open Render**: Go to [dashboard.render.com](https://dashboard.render.com/) and click **New +** → **Blueprint**.
+3. **Connect Repository**: Select `its-arpit-tripathi/ai-study-assistant`.
+4. **Environment Variables**: Fill in the required environment variables in the Render dashboard:
+   - `GROQ_API_KEY`
+   - `QDRANT_URL`
+   - `QDRANT_API_KEY`
+   - `DATABASE_URL`
+   - `AWS_ACCESS_KEY_ID`
+   - `AWS_SECRET_ACCESS_KEY`
+   - `AWS_S3_BUCKET`
+   - `AWS_ENDPOINT_URL_S3`
+5. **Deploy**: Render will build the Vite frontend (`dist/`), start the unified Express server, and serve your app with automated HTTPS!
+
+---
+
+### Option B: Deploy with Docker or Standalone VPS
+
+To deploy on any cloud VM, container service, or VPS:
+
+1. **Build the production frontend bundle**:
+   ```bash
+   npm run build
+   ```
+   *(Compiles static assets into `frontend/dist`)*
+
+2. **Run migrations**:
+   ```bash
+   node backend/scripts/run-migration.mjs
+   ```
+
+3. **Start the production server**:
+   ```bash
+   NODE_ENV=production PORT=80 node backend/server.js
+   ```
+   *Express automatically detects `frontend/dist` and serves both the compiled React frontend and the backend API on the same port.*
+
+4. **(Optional) Run Dedicated Background Worker for High Volume**:
+   ```bash
+   node backend/scripts/worker.mjs
+   ```
+
+---
+
+## 📁 Repository Structure
+
+```
+ai-study-assistant/
+├── backend/
+│   ├── config/
+│   │   └── database.js              # PostgreSQL Neon pool configuration
+│   ├── controllers/
+│   │   ├── authController.js        # User registration, login & session
+│   │   ├── chatController.js        # SSE streaming & non-streaming endpoints
+│   │   ├── documentController.js    # Upload, warm, file-fetch & delete
+│   │   └── healthController.js      # Health and telemetry metrics
+│   ├── lib/
+│   │   ├── citationVerifier.js      # Claim assertion parsing and grounding
+│   │   ├── documentProcessor.js     # PDF/text chunking & extraction
+│   │   ├── embeddings.js            # In-process Transformers.js model loader
+│   │   ├── hybridSearch.js          # Vector + BM25 RRF fusion & reranker
+│   │   ├── ingestionQueue.js        # PostgreSQL durable job queue
+│   │   ├── ingestionWorker.js       # Background ingestion & retry engine
+│   │   ├── llm.js                   # Groq streaming completion & fallbacks
+│   │   ├── storage.js               # S3-compatible object storage client
+│   │   └── vectorStore.js           # Qdrant client & collection management
+│   ├── migrations/                  # SQL schema migrations (001 - 004)
+│   ├── scripts/                     # Migration runner, worker, and E2E tests
+│   └── server.js                    # Unified Express application entrypoint
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── AuthModal.jsx        # Login & registration modal
+│   │   │   ├── ChatHeader.jsx       # Navigation, status, theme toggle
+│   │   │   ├── ChatInput.jsx        # Resizable query input & cancel action
+│   │   │   ├── ChatMessage.jsx      # Message bubble & citation cards
+│   │   │   ├── ClaimVerification.jsx# Interactive verified claim breakdown
+│   │   │   ├── PdfViewerModal.jsx   # In-app PDF evidence viewer
+│   │   │   ├── Sidebar.jsx          # Document manager & upload dropzone
+│   │   │   └── Toast.jsx            # Top-right notification system
+│   │   ├── utils/
+│   │   │   ├── api.js               # Client API & SSE stream reader
+│   │   │   └── markdown.jsx         # High-fidelity table & callout renderer
+│   │   ├── App.jsx                  # Main chat workspace & state manager
+│   │   └── index.css                # Global design system & theme tokens
+│   └── vite.config.js               # Vite configuration & dev proxy
+├── package.json                     # Monorepo workspaces manifest
+├── render.yaml                      # Render Blueprint deployment definition
+└── README.md                        # Documentation
+```
+
+---
+
+## 🩺 Troubleshooting & Diagnostics
+
+| Issue | Cause | Solution |
+|---|---|---|
+| **Header shows Vector DB Offline** | Qdrant free-tier cluster went idle (suspended after 7 days) | Log in to [cloud.qdrant.io](https://cloud.qdrant.io/) and click **Resume**. A ping to `/api/health` keeps the cluster active. |
+| **Model Unavailable Warnings** | Groq decommissioned a legacy model name | The backend automatically cascades to fallback models (`qwen/qwen3.8-27b`, `openai/gpt-oss-120b`). Update `GROQ_MODEL` in `.env` to silence warnings. |
+| **Database Connection Timeout** | Neon serverless database was sleeping during cold start | Retry the operation; Neon boots within 1–2 seconds. Connection pool handles reconnection automatically. |
+| **Large PDF Upload Failure** | Upload exceeded max size limit | The default payload limit is 20MB. Increase limits in `backend/middlewares/uploadMiddleware.js` if necessary. |
+
+---
 
 ## 📄 License
 
-MIT
-
-
-## Phase 1 — Reliability and security
-
-This branch adds email/password authentication, signed short-lived JWTs, password hashing, PostgreSQL-backed users/notebooks/document metadata, server-generated UUID document and Qdrant collection IDs, API/auth rate limits, Helmet security headers, JSON body limits, and PDF signature checks. Qdrant continues to store document vectors.
-
-### Required environment variables
-
-- `DATABASE_URL`: PostgreSQL connection string (local PostgreSQL or a managed provider).
-- `JWT_SECRET`: random secret of at least 32 characters. Generate one with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`.
-- Existing `GROQ_API_KEY`, `QDRANT_URL`, and `QDRANT_API_KEY`.
-
-Copy `.env.example` to `.env`, set the values, then run `npm install` and `npm run dev`. The database schema is created automatically on first boot. New users need a password of at least 12 characters.
-
-**Important:** this version does not automatically migrate existing anonymous/session-based document metadata from the old Qdrant `document_registry` collection. Existing vectors remain in Qdrant, but old registry entries won't appear in the new account-based UI; re-upload documents under your new account or perform a deliberate migration after assigning ownership. JWTs are stored in browser local storage for this vanilla-JS MVP; a production deployment should move to secure HttpOnly cookies and add email verification/password reset before public launch.
-
-
-## Phase 2 — Hybrid Search + Reranking
-
-- **Vector retrieval:** Qdrant returns up to 30 semantically similar chunks.
-- **Keyword retrieval:** A BM25 implementation over the persisted chunk corpus finds exact terms and names; chunk text is stored in `document_chunks`.
-- **Fusion:** Reciprocal Rank Fusion combines vector and keyword rankings without comparing their incompatible raw scores.
-- **Reranking:** A local `Xenova/ms-marco-MiniLM-L-6-v2` cross-encoder reranks fused candidates. If the model cannot load, a lexical scoring fallback is used and logged. Set `RERANKER_ENABLED=false` to skip the model and use lexical reranking.
-- **Final context:** Top 5 reranked chunks are passed to Groq.
-
-New uploads populate both Qdrant and PostgreSQL's keyword index. Existing documents uploaded before Phase 2 remain searchable through Qdrant, but will not have BM25 matches until re-uploaded or re-indexed. The `/api/health` endpoint should report Qdrant as healthy before upload/chat testing.
+Distributed under the **MIT License**. Free for personal and commercial usage.
