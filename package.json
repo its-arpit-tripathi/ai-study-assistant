@@ -1,0 +1,19 @@
+{
+  "name": "notebooklm-rag",
+  "version": "1.0.0",
+  "description": "NotebookLM RAG — Grounded AI Document Intelligence",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "start": "npm --prefix backend start",
+    "dev": "npm --prefix backend dev",
+    "dev:backend": "npm --prefix backend dev",
+    "dev:frontend": "npm --prefix frontend dev",
+    "build": "npm --prefix frontend run build",
+    "test": "npm --prefix backend test",
+    "test:e2e": "npm --prefix backend run test:e2e"
+  }
+}

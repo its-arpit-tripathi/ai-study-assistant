@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: notebooklm-rag
+    region: oregon
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: node backend/server.js
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      # Embeddings run locally (no API key). Keep the batch small: the free
+      # instance has 512 MB RAM and peak memory scales with batch size.
+      - key: EMBEDDING_PROVIDER
+        value: local
+      - key: EMBEDDING_BATCH_SIZE
+        value: "8"

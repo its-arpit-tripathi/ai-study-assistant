@@ -1,0 +1,148 @@
+/* ==========================================================================
+   NotebookLM RAG — Design System & Global Styles
+   Responsive Dual-Theme Interface (Dark #121316 & Clean Light)
+   Optimized for 14-inch & Modern High-DPI Laptop Screens
+   ========================================================================== */
+
+:root {
+  --bg-canvas: #f8fafc;
+  --bg-sidebar: #f1f5f9;
+  --bg-surface: #ffffff;
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --border-subtle: #e2e8f0;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+}
+
+html.dark {
+  --bg-canvas: #121316;
+  --bg-sidebar: #16181d;
+  --bg-surface: #1b1d24;
+  --text-primary: #f1f3f7;
+  --text-secondary: #9ea3b2;
+  --text-muted: #6b7280;
+  --border-subtle: #242730;
+}
+
+/* Base Reset */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+}
+
+/* Clean, unobtrusive scrollbars matching Stitch */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: #2a2d37;
+  border-radius: 6px;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #3c404d;
+}
+
+/* Prose Markdown custom styling for readability on 14" screen */
+.prose {
+  font-size: 15px;
+  line-height: 1.68;
+}
+
+.prose p {
+  margin-bottom: 0.85em;
+}
+
+.prose p:last-child {
+  margin-bottom: 0;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  font-weight: 600;
+  color: inherit;
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+  line-height: 1.35;
+}
+
+.prose h1 { font-size: 1.35em; }
+.prose h2 { font-size: 1.2em; }
+.prose h3 { font-size: 1.1em; }
+
+.prose pre {
+  margin: 0.85em 0;
+  padding: 0.85em 1.1em;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  line-height: 1.5;
+}
+
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
+}
+
+.dark .prose code {
+  background-color: #232732;
+  color: #93c5fd;
+}
+
+html:not(.dark) .prose code {
+  background-color: #f1f5f9;
+  color: #2563eb;
+}
+
+.prose ul, .prose ol {
+  padding-left: 1.35em;
+  margin-bottom: 0.85em;
+}
+
+.prose li {
+  margin-bottom: 0.35em;
+}
+
+.prose blockquote {
+  border-left: 3px solid #3b82f6;
+  padding-left: 1em;
+  margin: 0.85em 0;
+  font-style: italic;
+  opacity: 0.9;
+}

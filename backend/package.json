@@ -1,0 +1,48 @@
+{
+  "name": "notebooklm-rag-backend",
+  "version": "1.0.0",
+  "description": "NotebookLM RAG — Backend Service",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "check": "node --check server.js && node --check lib/vectorStore.js && node --check lib/hybridSearch.js && node --check lib/retrievalSelection.js && node --check lib/reranker.js && node --check lib/productionControls.js && node --check scripts/load-test.mjs",
+    "test": "node --test test/*.test.js",
+    "test:e2e": "node scripts/e2e-test.mjs",
+    "load:test": "node scripts/load-test.mjs",
+    "test:security": "node scripts/test-multi-user-isolation.mjs",
+    "migrate": "node scripts/run-migration.mjs",
+    "backup": "node scripts/backup-db.mjs"
+  },
+  "keywords": [
+    "rag",
+    "notebooklm",
+    "groq",
+    "qdrant",
+    "langchain",
+    "embeddings",
+    "huggingface",
+    "transformers"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
+    "@langchain/community": "^1.1.28",
+    "@langchain/core": "^1.1.45",
+    "@langchain/google-genai": "^2.1.30",
+    "@langchain/qdrant": "^1.0.2",
+    "@langchain/textsplitters": "^1.0.1",
+    "@qdrant/js-client-rest": "^1.19.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "groq-sdk": "^1.1.2",
+    "multer": "^2.1.1",
+    "pdf-parse": "^2.4.5",
+    "pg": "^8.16.3",
+    "bcryptjs": "^3.0.2",
+    "jsonwebtoken": "^9.0.2",
+    "helmet": "^8.1.0",
+    "express-rate-limit": "^8.1.0"
+  }
+}
