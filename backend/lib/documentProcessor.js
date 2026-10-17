@@ -2,6 +2,7 @@ import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import fs from "fs/promises";
 import path from "path";
+import { assertContentAllowed } from "./guardrails.js";
 
 const splitter = new RecursiveCharacterTextSplitter({
   chunkSize: 1000,
@@ -33,6 +34,12 @@ export async function processDocument(filePath, originalName, documentId) {
     throw new Error(
       `Unsupported file type: ${ext}. Only PDF and TXT are supported.`
     );
+  }
+
+  // Defense-in-depth safety guardrails: Assert content does not contain prohibited material
+  for (let i = 0; i < rawDocs.length; i++) {
+    const pageNum = rawDocs[i].metadata?.pageNumber ?? (i + 1);
+    assertContentAllowed(rawDocs[i].pageContent || "", `Document "${originalName}" (page ${pageNum})`);
   }
 
   const chunks = await splitter.splitDocuments(rawDocs);

@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "check": "node --check server.js && node --check lib/vectorStore.js && node --check lib/hybridSearch.js && node --check lib/retrievalSelection.js && node --check lib/reranker.js && node --check lib/productionControls.js && node --check scripts/load-test.mjs",
+    "check": "node --check server.js && node --check lib/guardrails.js && node --check lib/vectorStore.js && node --check lib/hybridSearch.js && node --check lib/retrievalSelection.js && node --check lib/reranker.js && node --check lib/productionControls.js && node --check scripts/load-test.mjs",
     "test": "node --test test/*.test.js",
     "test:e2e": "node scripts/e2e-test.mjs",
     "load:test": "node scripts/load-test.mjs",

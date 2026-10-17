@@ -116,9 +116,9 @@ export const ingestionQueue = {
 
   /**
    * Handle job failure with exponential backoff retry.
-   * If retries exhausted, marks as failed.
+   * If retries exhausted or permanent is true, marks as failed.
    */
-  async failJob(jobId, errorMessage) {
+  async failJob(jobId, errorMessage, { permanent = false } = {}) {
     const db = getPool();
 
     // Fetch job details
@@ -130,7 +130,7 @@ export const ingestionQueue = {
 
     const job = jobRows[0];
     const newRetryCount = job.retry_count + 1;
-    const canRetry = newRetryCount < job.max_retries;
+    const canRetry = !permanent && newRetryCount < job.max_retries;
 
     if (canRetry) {
       // Exponential backoff: 2s, 4s, 8s...

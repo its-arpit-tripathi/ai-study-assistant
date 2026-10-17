@@ -10,6 +10,7 @@ import { uploadsDir } from '../middlewares/uploadMiddleware.js';
 import { storage } from '../lib/storage.js';
 import { ingestionQueue } from '../lib/ingestionQueue.js';
 import { ingestionWorker } from '../lib/ingestionWorker.js';
+import { inspectDocumentFile } from '../lib/guardrails.js';
 
 export const documentController = {
   async uploadDocument(req, res, next) {
@@ -43,6 +44,17 @@ export const documentController = {
 
       if (size > 20 * 1024 * 1024) {
         return res.status(413).json({ error: 'File exceeds the 20MB limit.' });
+      }
+
+      // Safety Guardrails: Inspect document content (PDF or TXT) before persistence or indexing
+      const safetyInspection = await inspectDocumentFile(filePath, originalname);
+      if (!safetyInspection.allowed) {
+        return res.status(400).json({
+          error: safetyInspection.error,
+          safetyBlocked: true,
+          category: safetyInspection.primaryViolation?.category || 'PROHIBITED_CONTENT',
+          violations: safetyInspection.violations,
+        });
       }
 
       // Read file buffer & compute SHA-256 hash

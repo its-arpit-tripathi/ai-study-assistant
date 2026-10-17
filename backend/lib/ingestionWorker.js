@@ -93,9 +93,16 @@ export const ingestionWorker = {
       };
     } catch (err) {
       console.error(`[Worker ${workerId}] Ingestion failed for job ${job.id} (doc ${job.documentId}):`, err.message);
-      // Mark job as failed or re-queue with exponential backoff
-      await ingestionQueue.failJob(job.id, err.message);
-      return { success: false, error: err.message };
+      const isSafetyBlocked = Boolean(err.safetyBlocked);
+      // Mark job as failed or re-queue with exponential backoff (safety blocks are permanent)
+      await ingestionQueue.failJob(job.id, err.message, { permanent: isSafetyBlocked });
+      if (isSafetyBlocked) {
+        await DocumentModel.updateStatus(job.documentId, {
+          status: 'failed',
+          errorMessage: err.message,
+        }).catch(() => {});
+      }
+      return { success: false, error: err.message, safetyBlocked: isSafetyBlocked };
     }
   },
 

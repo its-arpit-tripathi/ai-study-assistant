@@ -9,6 +9,15 @@ export function statusFor(error) {
 }
 
 export function errorHandler(err, req, res, next) {
+  if (err?.safetyBlocked) {
+    return res.status(err.status || 400).json({
+      error: err.message,
+      safetyBlocked: true,
+      category: err.category,
+      violations: err.violations || [],
+    });
+  }
+
   if (err instanceof multer.MulterError) {
     const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
     return res.status(status).json({ error: `Upload error: ${err.message}` });

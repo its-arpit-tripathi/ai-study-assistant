@@ -8,6 +8,7 @@ import {
   llmSemaphore,
 } from '../lib/productionControls.js';
 import { metrics } from '../lib/metrics.js';
+import { evaluateGuardrails } from '../lib/guardrails.js';
 
 export const chatController = {
   async handleChat(req, res, next) {
@@ -27,6 +28,38 @@ export const chatController = {
         typeof collectionName !== 'string'
       ) {
         return res.status(400).json({ error: "Both 'query' and 'collectionName' are required." });
+      }
+
+      // Check query safety guardrails (Sexual content, Hate speech, Harassment, Violence, Dangerous content, Prompt injection)
+      const guardrailResult = evaluateGuardrails(query);
+      if (!guardrailResult.allowed) {
+        const refusal = guardrailResult.refusalMessage || 'This request was blocked by content safety guardrails.';
+        const primary = guardrailResult.primaryViolation;
+
+        if (isStream) {
+          res.setHeader('Content-Type', 'text/event-stream');
+          res.setHeader('Cache-Control', 'no-cache, no-transform');
+          res.setHeader('Connection', 'keep-alive');
+          res.setHeader('X-Accel-Buffering', 'no');
+          res.flushHeaders?.();
+          res.write(
+            `event: error\ndata: ${JSON.stringify({
+              error: refusal,
+              code: 400,
+              safetyBlocked: true,
+              category: primary?.category || 'PROHIBITED_CONTENT',
+              violations: guardrailResult.violations,
+            })}\n\n`
+          );
+          return res.end();
+        }
+
+        return res.status(400).json({
+          error: refusal,
+          safetyBlocked: true,
+          category: primary?.category || 'PROHIBITED_CONTENT',
+          violations: guardrailResult.violations,
+        });
       }
 
       // Check coordinated multi-replica rate limit
