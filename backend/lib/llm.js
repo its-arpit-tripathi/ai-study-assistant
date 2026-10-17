@@ -245,7 +245,7 @@ Guidelines for High-Quality Answers:
    - If any inquiry requests or leads to prohibited content, you must neutrally refuse:
      "I cannot assist with requests involving sexual, explicit, harmful, unsafe, or security-critical content."`;
 
-export async function generateAnswer(query, contextChunks) {
+export async function generateAnswer(query, contextChunks, { conversationHistory = [] } = {}) {
   if (!Array.isArray(contextChunks) || contextChunks.length === 0) {
     return {
       answer:
@@ -313,6 +313,13 @@ export async function generateAnswer(query, contextChunks) {
     ).values(),
   ];
 
+  const priorTurns = Array.isArray(conversationHistory)
+    ? conversationHistory
+        .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+        .slice(-6)
+        .map((m) => ({ role: m.role, content: m.content }))
+    : [];
+
   // Step 1: Generate the answer using the existing retrieved chunks.
   const generationStartedAt = performance.now();
   const response = await createCompletion([
@@ -322,6 +329,7 @@ export async function generateAnswer(query, contextChunks) {
         `${SYSTEM_PROMPT}\n\n` +
         `DOCUMENT CONTEXT:\n${formattedContext}`,
     },
+    ...priorTurns,
     {
       role: "user",
       content: query,
@@ -537,7 +545,7 @@ export async function streamCompletion(messages, options = {}, onChunk, signal) 
   );
 }
 
-export async function streamAnswer(query, contextChunks, onToken, signal, { onDraft, onVerificationProgress } = {}) {
+export async function streamAnswer(query, contextChunks, onToken, signal, { onDraft, onVerificationProgress, conversationHistory = [] } = {}) {
   if (!Array.isArray(contextChunks) || contextChunks.length === 0) {
     const noInfo = "I couldn't find this information in the uploaded document.";
     onToken?.(noInfo);
@@ -601,6 +609,13 @@ export async function streamAnswer(query, contextChunks, onToken, signal, { onDr
     ).values(),
   ];
 
+  const priorTurns = Array.isArray(conversationHistory)
+    ? conversationHistory
+        .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+        .slice(-6)
+        .map((m) => ({ role: m.role, content: m.content }))
+    : [];
+
   const generationStartedAt = performance.now();
   const { content: answer, model } = await streamCompletion(
     [
@@ -610,6 +625,7 @@ export async function streamAnswer(query, contextChunks, onToken, signal, { onDr
           `${SYSTEM_PROMPT}\n\n` +
           `DOCUMENT CONTEXT:\n${formattedContext}`,
       },
+      ...priorTurns,
       {
         role: "user",
         content: query,

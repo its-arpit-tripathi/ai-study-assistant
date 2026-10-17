@@ -22,6 +22,7 @@ import { pingQdrant } from './lib/vectorStore.js';
 import { qdrantHost } from './lib/qdrant.js';
 import { storage } from './lib/storage.js';
 import { ingestionWorker } from './lib/ingestionWorker.js';
+import { pingRedis } from './lib/redis.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -83,7 +84,16 @@ app.listen(PORT, () => {
   console.log(`   Embeddings:   ${emb.provider} · ${emb.model}`);
   console.log(`   Vector DB:    Qdrant · ${qdrantHost()}`);
   console.log(`   Object Store: ${storage.getProviderName()}`);
-  console.log(`   Worker Queue: ${process.env.RUN_INLINE_WORKER !== 'false' ? 'inline background worker active' : 'external workers only'}\n`);
+  console.log(`   Worker Queue: ${process.env.RUN_INLINE_WORKER !== 'false' ? 'inline background worker active' : 'external workers only'}`);
+  console.log(`   Redis Chat:   ${process.env.REDIS_URL ? process.env.REDIS_URL.replace(/:[^:@]+@/, ':***@') : 'redis://127.0.0.1:6379 (default)'}\n`);
+
+  pingRedis().then((r) => {
+    if (r.ok) {
+      console.log(`✅ [Redis] Persistent chat cache connected.`);
+    } else {
+      console.log(`ℹ️ [Redis] Standalone/offline (${r.error || r.status}). Dual-layer fallback persistence active.`);
+    }
+  }).catch(() => {});
 
   pingQdrant().then((q) => {
     if (!q.ok) console.warn(`⚠️  Qdrant check failed: ${q.error}\n`);

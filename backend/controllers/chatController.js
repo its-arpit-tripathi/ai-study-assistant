@@ -9,6 +9,7 @@ import {
 } from '../lib/productionControls.js';
 import { metrics } from '../lib/metrics.js';
 import { evaluateGuardrails } from '../lib/guardrails.js';
+import { chatHistory } from '../lib/chatHistory.js';
 
 export const chatController = {
   async handleChat(req, res, next) {
@@ -95,6 +96,18 @@ export const chatController = {
         return res.status(403).json({ error: 'Unauthorized access to this document.' });
       }
 
+      // Retrieve recent conversation history from Redis for conversational context
+      const priorTurns = await chatHistory.getRecentTurns(req.user.id, doc.id, 6);
+
+      // Persist the incoming user query in Redis & PostgreSQL
+      const userMsgId = req.body?.messageId || `u-${Date.now()}`;
+      await chatHistory.saveMessage(req.user.id, doc.id, {
+        id: userMsgId,
+        role: 'user',
+        content: query,
+        timestamp: new Date().toISOString(),
+      });
+
       // Check shared multi-replica answer cache
       const cacheKey = answerCacheKey({
         userId: req.user.id,
@@ -156,11 +169,32 @@ export const chatController = {
               model: cached.model,
               cached: true,
             });
+            // Persist cached response turn to Redis persistent chat
+            await chatHistory.saveMessage(req.user.id, doc.id, {
+              id: `a-${Date.now()}`,
+              role: 'assistant',
+              content: cached.answer,
+              sources: cached.sources,
+              verification: cached.verification,
+              model: cached.model,
+              timestamp: new Date().toISOString(),
+            });
+
             metrics.recordStreamEnd();
             if (res.writable && !res.writableEnded) res.end();
           }
           return;
         }
+
+        await chatHistory.saveMessage(req.user.id, doc.id, {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          content: cached.answer,
+          sources: cached.sources,
+          verification: cached.verification,
+          model: cached.model,
+          timestamp: new Date().toISOString(),
+        });
         return res.json({ ...cached, cached: true });
       }
 
@@ -183,6 +217,16 @@ export const chatController = {
           },
           model: getGroqModel(),
         };
+
+        await chatHistory.saveMessage(req.user.id, doc.id, {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          content: noInfoPayload.answer,
+          sources: noInfoPayload.sources,
+          verification: noInfoPayload.verification,
+          model: noInfoPayload.model,
+          timestamp: new Date().toISOString(),
+        });
 
         if (isStream) {
           res.setHeader('Content-Type', 'text/event-stream');
@@ -283,6 +327,7 @@ export const chatController = {
                 },
                 abortController.signal,
                 {
+                  conversationHistory: priorTurns,
                   // 2. Draft Answer Communication Event
                   onDraft: (draft) => {
                     if (!clientAborted) {
@@ -322,6 +367,17 @@ export const chatController = {
             verification: result.verification,
           });
 
+          // Persist completed assistant response to Redis persistent chat
+          await chatHistory.saveMessage(req.user.id, doc.id, {
+            id: `a-${Date.now()}`,
+            role: 'assistant',
+            content: result.answer,
+            sources: result.sources,
+            verification: result.verification,
+            model: result.model,
+            timestamp: new Date().toISOString(),
+          });
+
           metrics.recordStreamEnd();
 
           // Cache completed result across replicas
@@ -346,11 +402,22 @@ export const chatController = {
 
       // Non-streaming fallback
       const { answer, sources, model, verification } = await llmSemaphore.run(() =>
-        generateAnswer(query, contextChunks)
+        generateAnswer(query, contextChunks, { conversationHistory: priorTurns })
       );
 
       const payload = { answer, sources, model, verification };
       await answerCache.set(cacheKey, payload);
+
+      // Persist assistant response to Redis persistent chat
+      await chatHistory.saveMessage(req.user.id, doc.id, {
+        id: `a-${Date.now()}`,
+        role: 'assistant',
+        content: payload.answer,
+        sources: payload.sources,
+        verification: payload.verification,
+        model: payload.model,
+        timestamp: new Date().toISOString(),
+      });
 
       return res.json(payload);
     } catch (error) {
@@ -368,6 +435,63 @@ export const chatController = {
         }
         return;
       }
+      next(error);
+    }
+  },
+
+  /**
+   * GET /api/chat/history/:documentId
+   * Retrieve persistent chat history for a document from Redis / PostgreSQL
+   */
+  async getHistory(req, res, next) {
+    try {
+      const { documentId } = req.params;
+      if (!documentId) {
+        return res.status(400).json({ error: 'Document ID is required.' });
+      }
+
+      const doc = await DocumentModel.findById(req.user.id, documentId);
+      if (!doc) {
+        return res.status(404).json({ error: 'Document not found or access denied.' });
+      }
+
+      const limit = Math.max(1, Math.min(200, Number(req.query.limit) || 100));
+      const messages = await chatHistory.getHistory(req.user.id, doc.id, limit);
+
+      return res.json({
+        documentId: doc.id,
+        documentName: doc.name,
+        messages,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * DELETE /api/chat/history/:documentId
+   * Clear persistent chat history for a document in Redis & PostgreSQL
+   */
+  async clearHistory(req, res, next) {
+    try {
+      const { documentId } = req.params;
+      if (!documentId) {
+        return res.status(400).json({ error: 'Document ID is required.' });
+      }
+
+      const doc = await DocumentModel.findById(req.user.id, documentId);
+      if (!doc) {
+        return res.status(404).json({ error: 'Document not found or access denied.' });
+      }
+
+      await chatHistory.clearHistory(req.user.id, doc.id);
+
+      return res.json({
+        success: true,
+        message: 'Persistent chat history cleared successfully.',
+        documentId: doc.id,
+      });
+    } catch (error) {
       next(error);
     }
   },

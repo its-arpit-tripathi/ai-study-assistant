@@ -60,6 +60,18 @@ export async function initDatabase() {
     );
     CREATE INDEX IF NOT EXISTS document_chunks_document_idx ON document_chunks(user_id, document_id);
     CREATE INDEX IF NOT EXISTS document_chunks_fts_idx ON document_chunks USING GIN (to_tsvector('english', content));
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id TEXT PRIMARY KEY,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+      role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+      content TEXT NOT NULL,
+      sources JSONB DEFAULT '[]'::jsonb,
+      verification JSONB DEFAULT NULL,
+      model TEXT DEFAULT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS chat_messages_user_doc_idx ON chat_messages(user_id, document_id, created_at ASC);
   `);
   return db;
 }

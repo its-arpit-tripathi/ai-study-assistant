@@ -179,6 +179,32 @@ export default function App() {
     return () => clearInterval(intervalId);
   }, [documents]);
 
+  // Fetch persistent chat history from Redis whenever activeDocument changes
+  useEffect(() => {
+    let cancelled = false;
+    if (!activeDocument?.id) {
+      setMessages([]);
+      return;
+    }
+
+    const loadChatHistory = async () => {
+      try {
+        const history = await api.getChatHistory(activeDocument.id);
+        if (!cancelled && Array.isArray(history?.messages)) {
+          setMessages(history.messages);
+        }
+      } catch (err) {
+        console.warn('Could not load persistent chat history:', err);
+      }
+    };
+
+    loadChatHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeDocument?.id]);
+
   // Handle successful login or registration
   const handleAuthenticated = async (authenticatedUser) => {
     setUser(authenticatedUser);
@@ -195,13 +221,27 @@ export default function App() {
     showToast('Signed out successfully.', 'info');
   };
 
+  // Clear persistent chat history for active document
+  const handleClearChat = async () => {
+    if (!activeDocument?.id) return;
+    if (!window.confirm(`Clear persistent chat history for "${activeDocument.name}"?`)) {
+      return;
+    }
+    try {
+      await api.clearChatHistory(activeDocument.id);
+      setMessages([]);
+      showToast('Chat history cleared.', 'info');
+    } catch (err) {
+      showToast(err.message || 'Failed to clear chat history.', 'error');
+    }
+  };
+
   // Select document
   const handleSelectDocument = (doc) => {
     setActiveDocument(doc);
     if (doc?.id) {
       localStorage.setItem('activeDocId', doc.id);
     }
-    setMessages([]);
     setSidebarOpen(false);
     api.warmDocument(doc.id);
   };
@@ -239,7 +279,6 @@ export default function App() {
     if (newDoc?.id) {
       localStorage.setItem('activeDocId', newDoc.id);
     }
-    setMessages([]);
     setSidebarOpen(false);
     api.warmDocument(newDoc.id);
   };
@@ -476,6 +515,8 @@ export default function App() {
           }}
           theme={theme}
           onToggleTheme={toggleTheme}
+          onClearChat={handleClearChat}
+          hasMessages={messages.length > 0}
         />
 
         {/* Main Workspace Stage */}

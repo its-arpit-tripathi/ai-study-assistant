@@ -3,15 +3,20 @@ import { getGroqModel } from '../lib/llm.js';
 import { embeddingInfo } from '../lib/embeddings.js';
 import { llmSemaphore, answerCache } from '../lib/productionControls.js';
 import { metrics } from '../lib/metrics.js';
+import { pingRedis } from '../lib/redis.js';
 
 export const healthController = {
   async getHealth(req, res) {
-    const qdrant = await pingQdrant();
+    const [qdrant, redis] = await Promise.all([
+      pingQdrant(),
+      pingRedis(),
+    ]);
     const metricsSnapshot = metrics.getSnapshot();
 
     res.status(qdrant.ok && metricsSnapshot.status !== 'degraded' ? 200 : (qdrant.ok ? 200 : 503)).json({
       status: qdrant.ok ? (metricsSnapshot.status === 'degraded' ? 'degraded' : 'ok') : 'error',
       qdrant,
+      redis,
       llm: {
         provider: 'groq',
         model: getGroqModel(),

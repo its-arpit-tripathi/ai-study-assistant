@@ -11,6 +11,7 @@ import { storage } from '../lib/storage.js';
 import { ingestionQueue } from '../lib/ingestionQueue.js';
 import { ingestionWorker } from '../lib/ingestionWorker.js';
 import { inspectDocumentFile } from '../lib/guardrails.js';
+import { chatHistory } from '../lib/chatHistory.js';
 
 export const documentController = {
   async uploadDocument(req, res, next) {
@@ -286,6 +287,9 @@ export const documentController = {
       if (doc.storageKey) {
         await storage.deleteObject({ key: doc.storageKey }).catch(() => {});
       }
+
+      // 5. Clean up persistent chat history in Redis & PostgreSQL
+      await chatHistory.clearHistory(req.user.id, id).catch(() => {});
 
       // Also clean up any legacy local uploads
       const docExt = path.extname(doc.name).toLowerCase();

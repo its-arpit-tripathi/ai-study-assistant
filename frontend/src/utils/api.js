@@ -135,6 +135,23 @@ export const api = {
     return handleResponse(res);
   },
 
+  async getChatHistory(documentId) {
+    if (!documentId) return { messages: [] };
+    const res = await fetch(`/api/chat/history/${encodeURIComponent(documentId)}`, {
+      headers: authHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async clearChatHistory(documentId) {
+    if (!documentId) return { success: false };
+    const res = await fetch(`/api/chat/history/${encodeURIComponent(documentId)}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    return handleResponse(res);
+  },
+
   async sendChatStream(query, collectionName, { onToken, onSources, onDraft, onVerification, onDone, signal } = {}) {
     const res = await fetch('/api/chat', {
       method: 'POST',
