@@ -11,10 +11,6 @@ export function Sidebar({
   onClose,
   showToast,
   onOpenPdf,
-  user,
-  onSignOut,
-  theme,
-  onToggleTheme,
 }) {
   const fileInputRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -340,56 +336,6 @@ export function Sidebar({
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 text-center">
               {documents.length} document{documents.length !== 1 ? 's' : ''} • {totalChunks.toLocaleString()} chunks
             </p>
-
-            {/* User Account & Quick Theme / Sign Out Bar */}
-            {user && (
-              <div className="pt-3 mt-3 border-t border-slate-200 dark:border-[#242730] flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold text-xs shrink-0 shadow-2xs">
-                    {user.email ? user.email.charAt(0).toUpperCase() : 'U'}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate font-mono" title={user.email}>
-                      {user.email}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1 shrink-0">
-                  {onToggleTheme && (
-                    <button
-                      type="button"
-                      onClick={onToggleTheme}
-                      className="p-1.5 rounded-lg text-slate-600 dark:text-amber-400 hover:bg-slate-200 dark:hover:bg-[#242732] transition-colors cursor-pointer"
-                      title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
-                    >
-                      {theme === 'dark' ? (
-                        <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 9H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                        </svg>
-                      ) : (
-                        <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                        </svg>
-                      )}
-                    </button>
-                  )}
-
-                  {onSignOut && (
-                    <button
-                      type="button"
-                      onClick={onSignOut}
-                      className="p-1.5 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
-                      title="Sign out of account"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </aside>
