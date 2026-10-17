@@ -85,11 +85,14 @@ app.listen(PORT, () => {
   console.log(`   Vector DB:    Qdrant · ${qdrantHost()}`);
   console.log(`   Object Store: ${storage.getProviderName()}`);
   console.log(`   Worker Queue: ${process.env.RUN_INLINE_WORKER !== 'false' ? 'inline background worker active' : 'external workers only'}`);
-  console.log(`   Redis Chat:   ${process.env.REDIS_URL ? process.env.REDIS_URL.replace(/:[^:@]+@/, ':***@') : 'redis://127.0.0.1:6379 (default)'}\n`);
+  const redisTarget = process.env.UPSTASH_REDIS_REST_URL
+    ? `Upstash Redis REST (${process.env.UPSTASH_REDIS_REST_URL})`
+    : (process.env.REDIS_URL ? process.env.REDIS_URL.replace(/:[^:@]+@/, ':***@') : 'redis://127.0.0.1:6379 (default)');
+  console.log(`   Redis Chat:   ${redisTarget}\n`);
 
   pingRedis().then((r) => {
     if (r.ok) {
-      console.log(`✅ [Redis] Persistent chat cache connected.`);
+      console.log(`✅ [Redis] Persistent chat connected via ${r.provider === 'upstash' ? 'Upstash Redis REST' : 'TCP Redis'}.`);
     } else {
       console.log(`ℹ️ [Redis] Standalone/offline (${r.error || r.status}). Dual-layer fallback persistence active.`);
     }

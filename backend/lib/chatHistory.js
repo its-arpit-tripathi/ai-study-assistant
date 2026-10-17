@@ -130,7 +130,11 @@ export const chatHistory = {
           const parsed = [];
           for (const item of rawItems) {
             try {
-              parsed.push(JSON.parse(item));
+              if (item && typeof item === 'object') {
+                parsed.push(item);
+              } else if (typeof item === 'string') {
+                parsed.push(JSON.parse(item));
+              }
             } catch {}
           }
           if (parsed.length > 0) {
@@ -169,13 +173,11 @@ export const chatHistory = {
         if (isRedisAvailable() && redis) {
           (async () => {
             try {
-              const multi = redis.multi();
-              multi.del(key);
+              await redis.del(key);
               for (const m of formatted) {
-                multi.rpush(key, JSON.stringify(m));
+                await redis.rpush(key, JSON.stringify(m));
               }
-              multi.expire(key, 30 * 24 * 3600);
-              await multi.exec();
+              await redis.expire(key, 30 * 24 * 3600);
             } catch {}
           })();
         }
