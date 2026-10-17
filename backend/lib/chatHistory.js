@@ -61,6 +61,7 @@ export const chatHistory = {
       sources: Array.isArray(rawMessage.sources) ? rawMessage.sources : [],
       verification: rawMessage.verification || null,
       model: rawMessage.model || null,
+      usage: rawMessage.usage || null,
       timestamp: rawMessage.timestamp || new Date().toISOString(),
     };
 
@@ -86,13 +87,14 @@ export const chatHistory = {
     try {
       const db = getPool();
       await db.query(
-        `INSERT INTO chat_messages (id, user_id, document_id, role, content, sources, verification, model, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9)
+        `INSERT INTO chat_messages (id, user_id, document_id, role, content, sources, verification, model, usage, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9::jsonb, $10)
          ON CONFLICT (id) DO UPDATE SET
            content = EXCLUDED.content,
            sources = EXCLUDED.sources,
            verification = EXCLUDED.verification,
-           model = EXCLUDED.model`,
+           model = EXCLUDED.model,
+           usage = EXCLUDED.usage`,
         [
           message.id,
           userId,
@@ -102,6 +104,7 @@ export const chatHistory = {
           JSON.stringify(message.sources),
           JSON.stringify(message.verification),
           message.model,
+          JSON.stringify(message.usage),
           message.timestamp,
         ]
       );
@@ -150,7 +153,7 @@ export const chatHistory = {
     try {
       const db = getPool();
       const { rows } = await db.query(
-        `SELECT id, role, content, sources, verification, model, created_at AS timestamp
+        `SELECT id, role, content, sources, verification, model, usage, created_at AS timestamp
          FROM chat_messages
          WHERE user_id = $1 AND document_id = $2
          ORDER BY created_at ASC
@@ -166,6 +169,7 @@ export const chatHistory = {
           sources: r.sources || [],
           verification: r.verification || null,
           model: r.model || null,
+          usage: r.usage || null,
           timestamp: r.timestamp instanceof Date ? r.timestamp.toISOString() : r.timestamp,
         }));
 

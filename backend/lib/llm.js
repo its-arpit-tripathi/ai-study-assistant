@@ -116,7 +116,9 @@ async function createCompletion(messages, options = {}) {
   ];
 
   let lastError;
-  const maxTokens = options.max_tokens ?? (options.jsonMode ? 1500 : 1024);
+  const defaultMax = options.jsonMode ? 1500 : Number(process.env.GROQ_MAX_TOKENS || 1024);
+  const maxTokens = options.max_tokens ?? defaultMax;
+  const temperature = options.temperature ?? Number(process.env.GROQ_TEMPERATURE || 0.1);
 
   for (const model of candidates) {
     try {
@@ -126,7 +128,7 @@ async function createCompletion(messages, options = {}) {
           response = await getGroqClient().chat.completions.create({
             model,
             messages,
-            temperature: options.temperature ?? 0.1,
+            temperature,
             max_tokens: maxTokens,
             response_format: { type: "json_object" },
           });
@@ -143,7 +145,7 @@ async function createCompletion(messages, options = {}) {
             response = await getGroqClient().chat.completions.create({
               model,
               messages,
-              temperature: options.temperature ?? 0.1,
+              temperature,
               max_tokens: maxTokens,
             });
           } else {
@@ -154,7 +156,7 @@ async function createCompletion(messages, options = {}) {
         response = await getGroqClient().chat.completions.create({
           model,
           messages,
-          temperature: options.temperature ?? 0.1,
+          temperature,
           max_tokens: maxTokens,
         });
       }
@@ -262,6 +264,7 @@ export async function generateAnswer(query, contextChunks, { conversationHistory
         },
         claims: [],
       },
+      usage: null,
     };
   }
 
@@ -348,8 +351,32 @@ export async function generateAnswer(query, contextChunks, { conversationHistory
 
   const model = response.model ?? activeModel;
 
+  const promptTokens = response.usage?.prompt_tokens ?? Math.round(JSON.stringify(messages).length / 4);
+  const completionTokens = response.usage?.completion_tokens ?? Math.round(answer.length / 4);
+  const totalTokens = response.usage?.total_tokens ?? (promptTokens + completionTokens);
+  const tokensPerSec = completionTokens > 0 && generationMs > 0 ? Number((completionTokens / (generationMs / 1000)).toFixed(1)) : 0;
+
+  const usage = {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    tokensPerSec,
+    ttftMs: null,
+    generationMs,
+    queueTime: response.usage?.queue_time ?? null,
+    promptTime: response.usage?.prompt_time ?? null,
+    completionTime: response.usage?.completion_time ?? null,
+  };
+
+  if (process.env.LOG_TOKEN_USAGE === "true" || process.env.NODE_ENV !== "production") {
+    console.info(
+      `[TokenUsage] model=${model} prompt=${promptTokens} completion=${completionTokens} total=${totalTokens} speed=${tokensPerSec}tok/s (non-streaming)`
+    );
+  }
+
   // Step 2: Verify claims separately without delaying the user.
   let verification;
+  let verificationDurationMs = 0;
 
   if (process.env.CITATION_VERIFIER_ENABLED === "false") {
     verification = {
@@ -375,18 +402,20 @@ export async function generateAnswer(query, contextChunks, { conversationHistory
         timeoutPromise,
       ]);
 
+      verificationDurationMs = Math.round(performance.now() - verificationStartedAt);
       console.log("[CitationVerifier]", {
         status: verification.status,
         counts: verification.counts,
       });
-      console.info(`[Perf][LLM] citation_verification_ms=${Math.round(performance.now() - verificationStartedAt)}`);
+      console.info(`[Perf][LLM] citation_verification_ms=${verificationDurationMs}`);
     } catch (error) {
+      verificationDurationMs = Math.round(performance.now() - verificationStartedAt);
       console.warn(
         "[CitationVerifier] Verification bypassed/failed:",
         error.message
       );
 
-      console.info(`[Perf][LLM] citation_verification_ms=${Math.round(performance.now() - verificationStartedAt)} outcome=bypassed`);
+      console.info(`[Perf][LLM] citation_verification_ms=${verificationDurationMs} outcome=bypassed`);
       verification = {
         status: "verified",
         summary: "Grounded with direct document citations.",
@@ -414,6 +443,7 @@ export async function generateAnswer(query, contextChunks, { conversationHistory
         counts: { supported: 0, uncertain: 0, unsupported: 0 },
         claims: [],
       },
+      usage: null,
     };
   }
 
@@ -422,6 +452,10 @@ export async function generateAnswer(query, contextChunks, { conversationHistory
     sources,
     model,
     verification,
+    usage: {
+      ...usage,
+      verificationMs: verificationDurationMs,
+    },
   };
 }
 
@@ -437,7 +471,8 @@ export async function streamCompletion(messages, options = {}, onChunk, signal) 
   ];
 
   let lastError;
-  const maxTokens = options.max_tokens ?? 1500;
+  const maxTokens = options.max_tokens ?? Number(process.env.GROQ_MAX_TOKENS || 1500);
+  const temperature = options.temperature ?? Number(process.env.GROQ_TEMPERATURE || 0.1);
 
   for (const model of candidates) {
     try {
@@ -449,9 +484,10 @@ export async function streamCompletion(messages, options = {}, onChunk, signal) 
           return await getGroqClient().chat.completions.create({
             model,
             messages,
-            temperature: options.temperature ?? 0.1,
+            temperature,
             max_tokens: maxTokens,
             stream: true,
+            stream_options: { include_usage: true },
           });
         },
         { maxRetries: 2, signal }
@@ -470,8 +506,13 @@ export async function streamCompletion(messages, options = {}, onChunk, signal) 
       let inThinking = false;
       let thinkBuffer = "";
       let fullContent = "";
+      let streamUsage = null;
 
       for await (const chunk of stream) {
+        if (chunk?.usage) {
+          streamUsage = chunk.usage;
+        }
+
         if (signal?.aborted) {
           metrics.recordStreamAbort();
           break;
@@ -516,14 +557,40 @@ export async function streamCompletion(messages, options = {}, onChunk, signal) 
 
       const totalStreamMs = Math.round(performance.now() - streamStartTime);
       const ttftMs = firstTokenTime ? Math.round(firstTokenTime - streamStartTime) : null;
+
+      const promptTokens = streamUsage?.prompt_tokens ?? Math.round(JSON.stringify(messages).length / 4);
+      const completionTokens = streamUsage?.completion_tokens ?? Math.round(fullContent.length / 4);
+      const totalTokens = streamUsage?.total_tokens ?? (promptTokens + completionTokens);
+
+      const genMs = firstTokenTime ? Math.max(1, Math.round(performance.now() - firstTokenTime)) : totalStreamMs;
+      const tokensPerSec = completionTokens > 0 && genMs > 0 ? Number((completionTokens / (genMs / 1000)).toFixed(1)) : 0;
+
+      const usage = {
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        tokensPerSec,
+        ttftMs,
+        generationMs: totalStreamMs,
+        queueTime: streamUsage?.queue_time ?? null,
+        promptTime: streamUsage?.prompt_time ?? null,
+        completionTime: streamUsage?.completion_time ?? null,
+      };
+
+      if (process.env.LOG_TOKEN_USAGE === "true" || process.env.NODE_ENV !== "production") {
+        console.info(
+          `[TokenUsage] model=${model} prompt=${promptTokens} completion=${completionTokens} total=${totalTokens} speed=${tokensPerSec}tok/s ttft=${ttftMs}ms`
+        );
+      }
+
       metrics.recordProviderSuccess({
-        promptTokens: Math.round(JSON.stringify(messages).length / 4),
-        completionTokens: Math.round(fullContent.length / 4),
+        promptTokens,
+        completionTokens,
         ttftMs,
         totalMs: totalStreamMs,
       });
 
-      return { content: fullContent.trim(), model };
+      return { content: fullContent.trim(), model, usage };
     } catch (error) {
       metrics.recordProviderFailure({ error, isFallback: true });
       if (!isModelUnavailable(error)) {
@@ -559,6 +626,7 @@ export async function streamAnswer(query, contextChunks, onToken, signal, { onDr
         counts: { supported: 0, uncertain: 0, unsupported: 0 },
         claims: [],
       },
+      usage: null,
     };
   }
 
@@ -617,7 +685,7 @@ export async function streamAnswer(query, contextChunks, onToken, signal, { onDr
     : [];
 
   const generationStartedAt = performance.now();
-  const { content: answer, model } = await streamCompletion(
+  const { content: answer, model, usage } = await streamCompletion(
     [
       {
         role: "system",
@@ -659,6 +727,7 @@ export async function streamAnswer(query, contextChunks, onToken, signal, { onDr
 
   // 3. Claim verification after draft answer finishes
   let verification;
+  let verificationDurationMs = 0;
   const verifierStart = performance.now();
   if (process.env.CITATION_VERIFIER_ENABLED === "false") {
     verification = {
@@ -682,11 +751,13 @@ export async function streamAnswer(query, contextChunks, onToken, signal, { onDr
         }),
         timeoutPromise,
       ]);
+      verificationDurationMs = Math.round(performance.now() - verifierStart);
       metrics.recordVerification({
-        durationMs: Math.round(performance.now() - verifierStart),
+        durationMs: verificationDurationMs,
         status: verification.status,
       });
     } catch {
+      verificationDurationMs = Math.round(performance.now() - verifierStart);
       verification = {
         status: "verified",
         summary: "Grounded with direct document citations.",
@@ -694,7 +765,7 @@ export async function streamAnswer(query, contextChunks, onToken, signal, { onDr
         claims: [],
       };
       metrics.recordVerification({
-        durationMs: Math.round(performance.now() - verifierStart),
+        durationMs: verificationDurationMs,
         status: "bypassed",
       });
     }
@@ -714,6 +785,7 @@ export async function streamAnswer(query, contextChunks, onToken, signal, { onDr
         counts: { supported: 0, uncertain: 0, unsupported: 0 },
         claims: [],
       },
+      usage: null,
     };
   }
 
@@ -722,5 +794,9 @@ export async function streamAnswer(query, contextChunks, onToken, signal, { onDr
     sources,
     model,
     verification,
+    usage: {
+      ...usage,
+      verificationMs: verificationDurationMs,
+    },
   };
 }

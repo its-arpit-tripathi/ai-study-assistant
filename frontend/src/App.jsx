@@ -406,6 +406,7 @@ export default function App() {
                     sources: doneData?.sources || msg.sources,
                     verification: doneData?.verification || msg.verification,
                     model: doneData?.model || msg.model,
+                    usage: doneData?.usage || msg.usage,
                     isStreaming: false,
                     isVerifying: false,
                   }

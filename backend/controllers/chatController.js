@@ -161,12 +161,14 @@ export const chatController = {
               model: cached.model,
             });
             safeWrite('verification', { verification: cached.verification });
+            const cachedUsage = cached.usage ? { ...cached.usage, cached: true } : { cached: true };
             safeWrite('done', {
               done: true,
               answer: cached.answer,
               sources: cached.sources,
               verification: cached.verification,
               model: cached.model,
+              usage: cachedUsage,
               cached: true,
             });
             // Persist cached response turn to Redis persistent chat
@@ -177,6 +179,7 @@ export const chatController = {
               sources: cached.sources,
               verification: cached.verification,
               model: cached.model,
+              usage: cachedUsage,
               timestamp: new Date().toISOString(),
             });
 
@@ -186,6 +189,7 @@ export const chatController = {
           return;
         }
 
+        const cachedUsage = cached.usage ? { ...cached.usage, cached: true } : { cached: true };
         await chatHistory.saveMessage(req.user.id, doc.id, {
           id: `a-${Date.now()}`,
           role: 'assistant',
@@ -193,17 +197,20 @@ export const chatController = {
           sources: cached.sources,
           verification: cached.verification,
           model: cached.model,
+          usage: cachedUsage,
           timestamp: new Date().toISOString(),
         });
-        return res.json({ ...cached, cached: true });
+        return res.json({ ...cached, usage: cachedUsage, cached: true });
       }
 
       // Hybrid retrieval & cross-encoder reranking
       const retrievalK = Math.max(1, Number(process.env.RETRIEVAL_K || 7));
+      const retrievalStart = performance.now();
       const contextChunks = await retrieveContext(query, collectionName, retrievalK, {
         userId: req.user.id,
         documentId: doc.id,
       });
+      const retrievalMs = Math.round(performance.now() - retrievalStart);
 
       if (!contextChunks || contextChunks.length === 0) {
         const noInfoPayload = {
@@ -355,6 +362,10 @@ export const chatController = {
             return;
           }
 
+          const completeUsage = result.usage
+            ? { ...result.usage, retrievalMs }
+            : { retrievalMs };
+
           // 4. Final Citation-Verification Event
           sendEvent('verification', { verification: result.verification });
 
@@ -365,6 +376,7 @@ export const chatController = {
             answer: result.answer,
             sources: result.sources,
             verification: result.verification,
+            usage: completeUsage,
           });
 
           // Persist completed assistant response to Redis persistent chat
@@ -375,13 +387,14 @@ export const chatController = {
             sources: result.sources,
             verification: result.verification,
             model: result.model,
+            usage: completeUsage,
             timestamp: new Date().toISOString(),
           });
 
           metrics.recordStreamEnd();
 
           // Cache completed result across replicas
-          await answerCache.set(cacheKey, result).catch(() => {});
+          await answerCache.set(cacheKey, { ...result, usage: completeUsage }).catch(() => {});
         } catch (streamError) {
           if (!clientAborted && res.writable && !res.writableEnded) {
             sendEvent('error', {
@@ -401,11 +414,21 @@ export const chatController = {
       }
 
       // Non-streaming fallback
-      const { answer, sources, model, verification } = await llmSemaphore.run(() =>
+      const nonStreamResult = await llmSemaphore.run(() =>
         generateAnswer(query, contextChunks, { conversationHistory: priorTurns })
       );
 
-      const payload = { answer, sources, model, verification };
+      const completeUsage = nonStreamResult.usage
+        ? { ...nonStreamResult.usage, retrievalMs }
+        : { retrievalMs };
+
+      const payload = {
+        answer: nonStreamResult.answer,
+        sources: nonStreamResult.sources,
+        model: nonStreamResult.model,
+        verification: nonStreamResult.verification,
+        usage: completeUsage,
+      };
       await answerCache.set(cacheKey, payload);
 
       // Persist assistant response to Redis persistent chat
@@ -416,6 +439,7 @@ export const chatController = {
         sources: payload.sources,
         verification: payload.verification,
         model: payload.model,
+        usage: payload.usage,
         timestamp: new Date().toISOString(),
       });
 

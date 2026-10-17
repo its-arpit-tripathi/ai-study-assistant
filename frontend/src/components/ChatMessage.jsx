@@ -3,7 +3,7 @@ import { Markdown } from '../utils/markdown';
 import { ClaimVerification } from './ClaimVerification';
 
 export const ChatMessage = React.memo(function ChatMessage({ message, activeDocument, onOpenPdf }) {
-  const { role, content, sources = [], verification, model, isError, isStreaming, isVerifying } = message;
+  const { role, content, sources = [], verification, model, usage, isError, isStreaming, isVerifying } = message;
   const isUser = role === 'user';
 
   const safeSources = Array.isArray(sources) ? sources : [];
@@ -110,10 +110,48 @@ export const ChatMessage = React.memo(function ChatMessage({ message, activeDocu
           </div>
         )}
 
-        {/* Model Tag */}
-        {!isUser && model && (
-          <div className="mt-2 text-xs font-mono text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
-            <span>⚡ {model}</span>
+        {/* Model & Token Telemetry */}
+        {!isUser && (model || usage) && (
+          <div className="mt-2.5 flex flex-wrap items-center gap-1.5 sm:gap-2 text-[11px] font-mono text-slate-500 dark:text-slate-400">
+            {model && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 dark:bg-[#1a1d24] border border-slate-200 dark:border-[#272b35] text-slate-600 dark:text-slate-300">
+                ⚡ {model}
+              </span>
+            )}
+            {usage?.totalTokens != null && (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 dark:bg-[#1a1d24] border border-slate-200 dark:border-[#272b35] text-slate-600 dark:text-slate-300"
+                title={`Input prompt: ${usage.promptTokens} tokens | Output generation: ${usage.completionTokens} tokens`}
+              >
+                🎯 {usage.totalTokens} tok ({usage.promptTokens} in / {usage.completionTokens} out)
+              </span>
+            )}
+            {usage?.tokensPerSec > 0 && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-semibold">
+                🚀 {usage.tokensPerSec} tok/s
+              </span>
+            )}
+            {usage?.ttftMs != null && (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 dark:bg-[#1a1d24] border border-slate-200 dark:border-[#272b35] text-slate-600 dark:text-slate-300"
+                title="Time to First Token (TTFT)"
+              >
+                ⏱️ {usage.ttftMs}ms TTFT
+              </span>
+            )}
+            {usage?.retrievalMs != null && (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 dark:bg-[#1a1d24] border border-slate-200 dark:border-[#272b35] text-slate-600 dark:text-slate-300"
+                title="Hybrid Retrieval & Reranking Latency"
+              >
+                🔍 {usage.retrievalMs}ms retrieval
+              </span>
+            )}
+            {usage?.cached && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 font-semibold">
+                ⚡ cached
+              </span>
+            )}
           </div>
         )}
       </div>
