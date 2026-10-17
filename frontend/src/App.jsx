@@ -459,6 +459,10 @@ export default function App() {
         onClose={() => setSidebarOpen(false)}
         showToast={showToast}
         onOpenPdf={handleOpenPdf}
+        user={user}
+        onSignOut={handleSignOut}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
 
       {/* Main Viewport */}
